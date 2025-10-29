@@ -1,156 +1,237 @@
-# Agent0 Python SDK
+# Agent0 SDK
 
-A Python SDK for agent portability, discovery and trust based on ERC-8004.
+Python SDK for agent portability, discovery and trust based on ERC-8004.
 
-## Features
+Agent0 is the SDK for agentic economies. It enables agents to register, advertise their capabilities and how to communicate with them, and give each other feedback and reputation signals. All this using blockchain infrastructure (ERC-8004) and decentralized storage, enabling permissionless discovery without relying on proprietary catalogues or intermediaries.
 
-- **Agent Identity Management**: Create, register, and manage agent identities on-chain
-- **Reputation System**: Give and receive feedback with cryptographic authentication
-- **Agent Discovery**: Search and discover agents across chains with semantic search
-- **Trust Models**: Support for multiple trust models including reputation and validation
-- **MCP/A2A Integration**: Automatic discovery of agent capabilities and endpoints
-- **IPFS Integration**: Decentralized storage for agent registration files and feedback
+## What Does Agent0 SDK Do?
+
+Agent0 SDK v0.2 enables you to:
+
+- **Create and manage agent identities** - Register your AI agent on-chain with a unique identity, configure presentation fields (name, description, image), set wallet addresses, and manage trust models with x402 support
+- **Advertise agent capabilities** - Publish MCP and A2A endpoints, with automated extraction of MCP tools and A2A skills from endpoints
+- **Enable permissionless discovery** - Make your agent discoverable by other agents and platforms using rich search by attributes, capabilities, skills, tools, tasks, and x402 support
+- **Build reputation** - Give and receive feedback, retrieve feedback history, and search agents by reputation with cryptographic authentication
+- **Cross-chain registration** - One-line registration with IPFS nodes, Pinata, Filecoin, or HTTP URIs
+- **Public indexing** - Subgraph indexing both on-chain and IPFS data for fast search and retrieval
+
+## ⚠️ Alpha Release
+
+Agent0 SDK v0.2 is in **alpha** with bugs and is not production ready. We're actively testing and improving it.
+
+**Bug reports & feedback:** Telegram: [@marcoderossi](https://t.me/marcoderossi) | Email: marco.derossi@consensys.net | GitHub: [Report issues](https://github.com/agent0lab/agent0-sdk)
 
 ## Installation
 
-### From PyPI
+### Prerequisites
+
+- Python 3.8 or higher
+- pip package manager
+- Private key for signing transactions (or run in read-only mode)
+- Access to an Ethereum RPC endpoint (e.g., Alchemy, Infura)
+- (Optional) IPFS provider account (Pinata, Filecoin, or local IPFS node)
+
+### Install from PyPI
 
 ```bash
 pip install agent0-sdk
 ```
 
-### Development Installation
+### Install from Source
 
 ```bash
+git clone https://github.com/agent0lab/agent0-py.git
 cd agent0-py
 pip install -e .
 ```
 
 ## Quick Start
 
+### 1. Initialize SDK
+
 ```python
 from agent0_sdk import SDK
 import os
 
-# Initialize SDK with IPFS and subgraph (recommended for full functionality)
+# Initialize SDK with IPFS and subgraph
 sdk = SDK(
     chainId=11155111,  # Ethereum Sepolia testnet
     rpcUrl=os.getenv("RPC_URL"),
     signer=os.getenv("PRIVATE_KEY"),
-    ipfs="pinata",
-    pinataJwt=os.getenv("PINATA_JWT")
+    ipfs="pinata",  # Options: "pinata", "filecoinPin", "node"
+    pinataJwt=os.getenv("PINATA_JWT")  # For Pinata
     # Subgraph URL auto-defaults from DEFAULT_SUBGRAPH_URLS
 )
+```
 
-# Create an agent
+### 2. Create and Register Agent
+
+```python
+# Create agent
 agent = sdk.createAgent(
     name="My AI Agent",
-    description="An intelligent assistant for various tasks",
+    description="An intelligent assistant for various tasks. Skills: data analysis, code generation.",
     image="https://example.com/agent-image.png"
 )
 
-# Configure endpoints
-agent.setMCP("https://mcp.example.com/")
-agent.setA2A("https://a2a.example.com/agent-card.json")
+# Configure endpoints (automatically extracts capabilities)
+agent.setMCP("https://mcp.example.com/")  # Extracts tools, prompts, resources
+agent.setA2A("https://a2a.example.com/agent-card.json")  # Extracts skills
+agent.setENS("myagent.eth")
 
-# Set wallet and trust models
+# Configure wallet and trust
 agent.setAgentWallet("0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb", chainId=11155111)
 agent.setTrust(reputation=True, cryptoEconomic=True)
 
 # Add metadata and set status
-agent.setMetadata({
-    "version": "1.0.0",
-    "category": "ai-assistant"
-})
+agent.setMetadata({"version": "1.0.0", "category": "ai-assistant"})
 agent.setActive(True)
 
 # Register on-chain with IPFS
 agent.registerIPFS()
-print(f"Agent registered with ID: {agent.agentId}")
-print(f"Agent URI: {agent.agentURI}")
-
-# Search for agents
-results = sdk.searchAgents(
-    name="AI",  # substring search
-    mcp=True
-)
+print(f"Agent registered: {agent.agentId}")  # e.g., "11155111:123"
+print(f"Agent URI: {agent.agentURI}")  # e.g., "ipfs://Qm..."
 ```
 
-## Agent Transfer
-
-Transfer agent ownership to another address. Only the current owner can transfer an agent.
+### 3. Load and Edit Agent
 
 ```python
-from agent0_sdk import SDK
-import os
+# Load existing agent for editing
+agent = sdk.loadAgent("11155111:123")  # Format: "chainId:agentId"
 
-# Initialize SDK
-sdk = SDK(
-    chainId=11155111,
-    rpcUrl=os.getenv("RPC_URL"),
-    signer=os.getenv("PRIVATE_KEY")
-)
+# Edit agent properties
+agent.updateInfo(description="Updated description with new capabilities")
+agent.setMCP("https://new-mcp.example.com/")
 
-# Transfer using Agent instance
-agent = sdk.loadAgent("11155111:123")
-transfer_result = agent.transfer("0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6")
-
-# Or transfer using SDK directly
-transfer_result = sdk.transferAgent("11155111:123", "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6")
-
-print(f"Transfer transaction: {transfer_result['txHash']}")
-print(f"New owner: {transfer_result['to']}")
+# Re-register to update on-chain
+agent.registerIPFS()
+print(f"Updated: {agent.agentURI}")
 ```
 
-**Important Notes:**
-- Only the current owner can transfer the agent
-- Agent URI, metadata, and all other data remain unchanged
-- Transfer is irreversible - ensure the new owner is correct
-- Invalid addresses and self-transfers are automatically rejected
+### 4. Search Agents
 
-## Smart Contracts
+```python
+# Search by name, capabilities, or attributes
+results = sdk.searchAgents(
+    name="AI",  # Substring search
+    mcpTools=["code_generation"],  # Specific MCP tools
+    a2aSkills=["python"],  # Specific A2A skills
+    active=True,  # Only active agents
+    x402support=True  # Payment support
+)
 
-The smart contract ABIs are located at `../smart-contracts/` (relative to this directory).
+for agent in results['items']:
+    print(f"{agent.name}: {agent.description}")
+    print(f"  Tools: {agent.mcpTools}")
+    print(f"  Skills: {agent.a2aSkills}")
 
-## Documentation
+# Get single agent (read-only, faster)
+agent_summary = sdk.getAgent("11155111:123")
+```
 
-Full documentation is available at [sdk.ag0.xyz](https://sdk.ag0.xyz).
+### 5. Give and Retrieve Feedback
 
-## Examples
+```python
+# Prepare feedback (only score is mandatory)
+feedback_file = sdk.prepareFeedback(
+    agentId="11155111:123",
+    score=85,  # 0-100 (mandatory)
+    tags=["data_analyst", "finance"],  # Optional
+    capability="tools",  # Optional: MCP capability
+    name="code_generation",  # Optional: MCP tool name
+    skill="python"  # Optional: A2A skill
+)
 
-See the `examples/` directory for complete working examples:
+# Give feedback
+feedback = sdk.giveFeedback(agentId="11155111:123", feedbackFile=feedback_file)
+
+# Search feedback
+results = sdk.searchFeedback(
+    agentId="11155111:123",
+    capabilities=["tools"],
+    minScore=80,
+    maxScore=100
+)
+
+# Get reputation summary
+summary = sdk.getReputationSummary("11155111:123")
+print(f"Average score: {summary['averageScore']}")
+```
+
+## IPFS Configuration Options
+
+```python
+# Option 1: Filecoin Pin (free for ERC-8004 agents)
+sdk = SDK(
+    chainId=11155111,
+    rpcUrl="...",
+    signer=private_key,
+    ipfs="filecoinPin",
+    filecoinPrivateKey="your-filecoin-private-key"
+)
+
+# Option 2: IPFS Node
+sdk = SDK(
+    chainId=11155111,
+    rpcUrl="...",
+    signer=private_key,
+    ipfs="node",
+    ipfsNodeUrl="https://ipfs.infura.io:5001"
+)
+
+# Option 3: Pinata (free for ERC-8004 agents)
+sdk = SDK(
+    chainId=11155111,
+    rpcUrl="...",
+    signer=private_key,
+    ipfs="pinata",
+    pinataJwt="your-pinata-jwt-token"
+)
+
+# Option 4: HTTP registration (no IPFS)
+sdk = SDK(chainId=11155111, rpcUrl="...", signer=private_key)
+agent.register("https://example.com/agent-registration.json")
+```
+
+## Use Cases
+
+- **Building agent marketplaces** - Create platforms where developers can discover, evaluate, and integrate agents based on their capabilities and reputation
+- **Agent interoperability** - Discover agents by specific capabilities (skills, tools, tasks), evaluate them through reputation signals, and integrate them via standard protocols (MCP/A2A)
+- **Managing agent reputation** - Track agent performance, collect feedback from users and other agents, and build trust signals for your agent ecosystem
+- **Cross-chain agent operations** - Deploy and manage agents across multiple blockchain networks with consistent identity and reputation
+
+## 🚀 Coming Soon
+
+- More chains (currently Ethereum Sepolia only)
+- Support for validations
+- Multi-chain agents search
+- Enhanced x402 payments
+- Semantic/Vectorial search
+- Advanced reputation aggregation
+- Import/Export to centralized catalogues
+
+## Tests
+
+Complete working examples are available in the `tests/` directory:
+
 - `test_registration.py` - Agent registration with HTTP URI
 - `test_registrationIpfs.py` - Agent registration with IPFS
-- `test_feedback.py` - Feedback flow
+- `test_feedback.py` - Complete feedback flow with IPFS storage
 - `test_search.py` - Agent search and discovery
 - `test_transfer.py` - Agent ownership transfer
 
-## Development
+## Documentation
 
-### Setup
+Full documentation is available at [sdk.ag0.xyz](https://sdk.ag0.xyz), including:
 
-```bash
-cd agent0-py
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -e ".[dev]"
-```
-
-### Running Tests
-
-```bash
-pytest tests/
-```
-
-### Running Examples
-
-```bash
-# Set up .env file in project root with your configuration
-cd examples
-python test_registration.py
-```
+- [Installation Guide](https://sdk.ag0.xyz/2-usage/2-1-install/)
+- [Agent Configuration](https://sdk.ag0.xyz/2-usage/2-2-configure-agents/)
+- [Registration](https://sdk.ag0.xyz/2-usage/2-3-registration-ipfs/)
+- [Search](https://sdk.ag0.xyz/2-usage/2-5-search/)
+- [Feedback](https://sdk.ag0.xyz/2-usage/2-6-use-feedback/)
+- [Key Concepts](https://sdk.ag0.xyz/1-welcome/1-2-key-concepts/)
+- [API Reference](https://sdk.ag0.xyz/5-reference/5-1-sdk/)
 
 ## License
 
 MIT License - see LICENSE file for details.
-

@@ -7,7 +7,7 @@ name = "agent0-sdk"
 version = "0.2.0"
 description = "Python SDK for agent portability, discovery and trust based on ERC-8004"
 authors = [
-    {name = "Marco De Rossi", email = "marco@ag0.xyz"}
+    {name = "Marco De Rossi", email = "marco.derossi@consensys.net"}
 ]
 readme = {file = "README.md", content-type = "text/markdown"}
 license = {file = "LICENSE"}

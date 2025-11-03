@@ -459,9 +459,25 @@ class AgentIndexer:
             reg_file_where["did"] = params.did
         if params.walletAddress is not None:
             reg_file_where["agentWallet"] = params.walletAddress
-        
+
         if reg_file_where:
             where_clause["registrationFile_"] = reg_file_where
+
+        # Owner filtering
+        if params.owners is not None and len(params.owners) > 0:
+            # Normalize addresses to lowercase for case-insensitive matching
+            normalized_owners = [owner.lower() for owner in params.owners]
+            if len(normalized_owners) == 1:
+                where_clause["owner"] = normalized_owners[0]
+            else:
+                where_clause["owner_in"] = normalized_owners
+
+        # Operator filtering 
+        if params.operators is not None and len(params.operators) > 0:
+            # Normalize addresses to lowercase for case-insensitive matching
+            normalized_operators = [op.lower() for op in params.operators]
+            # For operators (array field), use contains to check if any operator matches
+            where_clause["operators_contains"] = normalized_operators
         
         # Calculate pagination
         skip = 0

@@ -80,7 +80,7 @@ class IPFSClient:
         except (subprocess.CalledProcessError, FileNotFoundError):
             raise RuntimeError(
                 "filecoin-pin CLI not found. "
-                "Install it from: https://github.com/filecoin-shipyard/filecoin-pin"
+                "Install it from: https://github.com/filecoin-project/filecoin-pin?tab=readme-ov-file#cli"
             )
 
     def _pin_to_filecoin(self, file_path: str) -> str:

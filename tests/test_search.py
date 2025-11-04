@@ -15,6 +15,13 @@ Flow:
 10. Search agents by reputation with capability filtering
 11. Advanced: Find top-rated agents with specific skills
 12. Advanced: Find agents with multiple requirements
+13. Pagination test
+14. Sort by activity test
+15. Search agents by single owner address
+16. Search agents by multiple owner addresses
+17. Search agents by operator addresses
+18. Combined search: owner + active status
+19. Combined search: owner + name filter
 """
 
 import logging
@@ -261,7 +268,144 @@ def main():
                 print(f"   {i}. ID {agent_id}: {agent['name']}")
     except Exception as e:
         print(f"❌ Failed activity sort: {e}")
-    
+
+    print(f"\n📍 Step 15: Search Agents by Single Owner Address")
+    print("-" * 60)
+    try:
+        # First, get an agent to extract its owner address for testing
+        test_agent = sdk.getAgent(AGENT_ID)
+        if hasattr(test_agent, 'owner') and test_agent.owner:
+            owner_address = test_agent.owner
+            print(f"   Testing with owner address: {owner_address}")
+
+            results = sdk.searchAgents(owners=[owner_address])
+            agents = results.get('items', [])
+            print(f"✅ Found {len(agents)} agent(s) owned by {owner_address[:10]}...{owner_address[-8:]}")
+
+            for i, agent in enumerate(agents[:3], 1):
+                agent_id = agent.get('agentId', agent.get('id', 'N/A'))
+                agent_owner = agent.get('owner', 'N/A')
+                print(f"   {i}. {agent['name']} (ID: {agent_id})")
+                print(f"      Owner: {agent_owner[:10]}...{agent_owner[-8:] if len(agent_owner) > 18 else agent_owner}")
+        else:
+            print("⚠️  Test agent doesn't have owner information")
+    except Exception as e:
+        print(f"❌ Failed to search by single owner: {e}")
+
+    print(f"\n📍 Step 16: Search Agents by Multiple Owner Addresses")
+    print("-" * 60)
+    try:
+        # Get multiple agents to collect different owner addresses
+        results = sdk.searchAgents(page_size=5)
+        agents = results.get('items', [])
+        owner_addresses = []
+
+        for agent in agents:
+            if agent.get('owner') and agent['owner'] not in owner_addresses:
+                owner_addresses.append(agent['owner'])
+                if len(owner_addresses) >= 2:
+                    break
+
+        if len(owner_addresses) >= 2:
+            print(f"   Testing with {len(owner_addresses)} owner addresses")
+            results = sdk.searchAgents(owners=owner_addresses)
+            agents = results.get('items', [])
+            print(f"✅ Found {len(agents)} agent(s) owned by multiple addresses")
+
+            for i, agent in enumerate(agents[:5], 1):
+                agent_id = agent.get('agentId', agent.get('id', 'N/A'))
+                agent_owner = agent.get('owner', 'N/A')
+                print(f"   {i}. {agent['name']} (Owner: {agent_owner[:10]}...{agent_owner[-8:] if len(agent_owner) > 18 else agent_owner})")
+        else:
+            print("⚠️  Not enough different owners found for multi-owner test")
+    except Exception as e:
+        print(f"❌ Failed to search by multiple owners: {e}")
+
+    print(f"\n📍 Step 17: Search Agents by Operator Addresses")
+    print("-" * 60)
+    try:
+        # First check if any agents have operators defined
+        results = sdk.searchAgents(page_size=10)
+        agents = results.get('items', [])
+        test_operators = []
+
+        for agent in agents:
+            if agent.get('operators') and len(agent['operators']) > 0:
+                test_operators = agent['operators'][:1]  # Use first operator
+                print(f"   Testing with operator: {test_operators[0][:10]}...{test_operators[0][-8:]}")
+                break
+
+        if test_operators:
+            results = sdk.searchAgents(operators=test_operators)
+            found_agents = results.get('items', [])
+            print(f"✅ Found {len(found_agents)} agent(s) with specified operator")
+
+            for i, agent in enumerate(found_agents[:3], 1):
+                agent_id = agent.get('agentId', agent.get('id', 'N/A'))
+                agent_operators = agent.get('operators', [])
+                print(f"   {i}. {agent['name']} (ID: {agent_id})")
+                if agent_operators:
+                    print(f"      Operators: {len(agent_operators)} total")
+        else:
+            print("⚠️  No agents with operators found for testing")
+    except Exception as e:
+        print(f"❌ Failed to search by operators: {e}")
+
+    print(f"\n📍 Step 18: Combined Search - Owner + Active Status")
+    print("-" * 60)
+    try:
+        # Get an owner address from an active agent
+        results = sdk.searchAgents(active=True, page_size=5)
+        agents = results.get('items', [])
+
+        if agents and agents[0].get('owner'):
+            test_owner = agents[0]['owner']
+            print(f"   Testing owner {test_owner[:10]}...{test_owner[-8:]} + active=True")
+
+            results = sdk.searchAgents(owners=[test_owner], active=True)
+            found_agents = results.get('items', [])
+            print(f"✅ Found {len(found_agents)} active agent(s) owned by specified address")
+
+            for i, agent in enumerate(found_agents[:3], 1):
+                agent_id = agent.get('agentId', agent.get('id', 'N/A'))
+                print(f"   {i}. {agent['name']} (ID: {agent_id})")
+                print(f"      Active: {agent.get('active', False)}, Owner: {agent.get('owner', 'N/A')[:10]}...")
+        else:
+            print("⚠️  No active agents with owner information found")
+    except Exception as e:
+        print(f"❌ Failed combined owner + active search: {e}")
+
+    print(f"\n📍 Step 19: Combined Search - Owner + Name Filter")
+    print("-" * 60)
+    try:
+        # Get agents and find one with both name and owner
+        results = sdk.searchAgents(page_size=10)
+        agents = results.get('items', [])
+
+        test_agent = None
+        for agent in agents:
+            if agent.get('owner') and agent.get('name'):
+                test_agent = agent
+                break
+
+        if test_agent:
+            test_owner = test_agent['owner']
+            # Use partial name for search
+            name_part = test_agent['name'][:4] if len(test_agent['name']) > 4 else test_agent['name']
+            print(f"   Testing owner filter + name contains '{name_part}'")
+
+            results = sdk.searchAgents(owners=[test_owner], name=name_part)
+            found_agents = results.get('items', [])
+            print(f"✅ Found {len(found_agents)} agent(s) matching both criteria")
+
+            for i, agent in enumerate(found_agents[:3], 1):
+                agent_id = agent.get('agentId', agent.get('id', 'N/A'))
+                print(f"   {i}. {agent['name']} (ID: {agent_id})")
+        else:
+            print("⚠️  No suitable test agent found")
+    except Exception as e:
+        print(f"❌ Failed combined owner + name search: {e}")
+
     print("\n" + "=" * 60)
     print("✅ Search Tests Completed!")
     print("=" * 60)

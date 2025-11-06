@@ -8,14 +8,16 @@ import json
 import logging
 import time
 from typing import Any, Dict, List, Optional, Union
-
 from typing import TYPE_CHECKING
 from .models import (
     AgentId, Address, URI, Timestamp, IdemKey,
     EndpointType, TrustModel, Endpoint, RegistrationFile
 )
-from .web3_client import Web3Client
 from .endpoint_crawler import EndpointCrawler
+from .ens_verification import (
+    load_agent_registry_record,
+    record_matches_agent,
+)
 from .oasf_validator import validate_skill, validate_domain
 
 if TYPE_CHECKING:
@@ -549,6 +551,42 @@ class Agent:
         self.registration_file.updatedAt = int(time.time())
         
         return self
+
+    def verifyENSName(self, ens_name: Optional[str] = None) -> bool:
+        """Verify the agent's ENS name against ENSIP-25 registry records."""
+        ens_name = ens_name or self.ensEndpoint
+        agent_id = self.registration_file.agentId
+        if not ens_name or not agent_id:
+            return False
+
+        try:
+            chain_part, token_part = agent_id.split(":", 1)
+            parsed_chain_id = int(chain_part, 10)
+            parsed_agent_id = int(token_part, 10)
+        except (ValueError, AttributeError):
+            return False
+
+        provider = getattr(self.sdk.web3_client, "w3", None)
+        if provider is None:
+            return False
+
+        record = load_agent_registry_record(provider, ens_name, parsed_chain_id)
+        if not record:
+            return False
+
+        try:
+            registry_address = self.sdk.identity_registry.address
+        except Exception:
+            return False
+
+        return record_matches_agent(
+            record,
+            {
+                "chainId": parsed_chain_id,
+                "registryAddress": registry_address,
+                "agentId": parsed_agent_id,
+            },
+        )
 
     def setActive(self, active: bool) -> 'Agent':
         """Set agent active status."""

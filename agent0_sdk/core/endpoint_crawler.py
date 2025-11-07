@@ -196,13 +196,15 @@ class EndpointCrawler:
                 return None
 
             # Try multiple well-known paths for A2A agent cards
+            # Per ERC-8004, endpoint may already be full URL to agent card
+            # Per A2A spec section 5.3, recommended discovery path is /.well-known/agent-card.json
             agentcard_urls = [
-                endpoint,  # Try exact URL first (may already be full path)
-                f"{endpoint}/agentcard.json",
-                f"{endpoint}/.well-known/agent.json",
-                f"{endpoint}/.well-known/agent-card.json",  # Added support for agent-card.json
+                endpoint,  # Try exact URL first (ERC-8004 format: full path to agent card)
+                f"{endpoint}/.well-known/agent-card.json",  # Spec-recommended discovery path
+                f"{endpoint.rstrip('/')}/.well-known/agent-card.json",
+                f"{endpoint}/.well-known/agent.json",  # Alternative well-known path
                 f"{endpoint.rstrip('/')}/.well-known/agent.json",
-                f"{endpoint.rstrip('/')}/.well-known/agent-card.json"  # Added support for agent-card.json
+                f"{endpoint}/agentcard.json"  # Legacy path
             ]
 
             for agentcard_url in agentcard_urls:
@@ -214,8 +216,8 @@ class EndpointCrawler:
                     if response.status_code == 200:
                         data = response.json()
 
-                        # Extract skills/tags from agentcard using A2A-specific logic
-                        skills = self._extract_a2a_skills_with_tags(data)
+                        # Extract skill tags from agentcard
+                        skills = self._extract_a2a_skills(data)
 
                         if skills:
                             logger.info(f"Successfully fetched A2A capabilities from {agentcard_url}: {len(skills)} skills")
@@ -230,22 +232,16 @@ class EndpointCrawler:
 
         return None
 
-    def _extract_a2a_skills_with_tags(self, data: Dict[str, Any]) -> List[str]:
+    def _extract_a2a_skills(self, data: Dict[str, Any]) -> List[str]:
         """
-        Extract A2A skills by aggregating tags from all skill objects.
+        Extract skill tags from A2A agent card.
 
-        A2A agent cards have a structure like:
-        {
-          "skills": [
-            {
-              "id": "skill1",
-              "name": "Skill Name",
-              "tags": ["tag1", "tag2", "tag3"]
-            }
-          ]
-        }
+        Per A2A Protocol spec (v0.3.0), agent cards should have:
+          skills: AgentSkill[] where each AgentSkill has a tags[] array
 
-        This method extracts ALL tags from ALL skills and returns a flat list.
+        This method also handles non-standard formats for backward compatibility:
+        - detailedSkills[].tags[] (custom extension)
+        - skills: ["tag1", "tag2"] (non-compliant flat array)
 
         Args:
             data: Agent card JSON data
@@ -253,23 +249,42 @@ class EndpointCrawler:
         Returns:
             List of unique skill tags (strings)
         """
-        all_tags = []
+        result = []
 
-        # Extract tags from skills array
+        # Try spec-compliant format first: skills[].tags[]
         if 'skills' in data and isinstance(data['skills'], list):
             for skill in data['skills']:
                 if isinstance(skill, dict) and 'tags' in skill:
+                    # Spec-compliant: AgentSkill object with tags
                     tags = skill['tags']
                     if isinstance(tags, list):
-                        # Add all string tags
                         for tag in tags:
-                            if isinstance(tag, str) and tag not in all_tags:
-                                all_tags.append(tag)
+                            if isinstance(tag, str):
+                                result.append(tag)
+                elif isinstance(skill, str):
+                    # Non-compliant: flat string array (fallback)
+                    result.append(skill)
+
+        # Fallback to detailedSkills if no tags found in skills
+        # (custom extension used by some implementations)
+        if not result and 'detailedSkills' in data and isinstance(data['detailedSkills'], list):
+            for skill in data['detailedSkills']:
+                if isinstance(skill, dict) and 'tags' in skill:
+                    tags = skill['tags']
+                    if isinstance(tags, list):
+                        for tag in tags:
+                            if isinstance(tag, str):
+                                result.append(tag)
 
         # Remove duplicates while preserving order
-        unique_tags = list(dict.fromkeys(all_tags))
+        seen = set()
+        unique_result = []
+        for item in result:
+            if item not in seen:
+                seen.add(item)
+                unique_result.append(item)
 
-        return unique_tags
+        return unique_result
     
     def _extract_list(self, data: Dict[str, Any], key: str) -> List[str]:
         """

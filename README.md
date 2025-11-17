@@ -136,6 +136,18 @@ for agent in results['items']:
 agent_summary = sdk.getAgent("11155111:123")
 ```
 
+### Verify ENS Records
+
+Agents that advertise an ENS endpoint should publish an [ENSIP-25](https://github.com/nxt3d/ensips/blob/ensip-25/ensips/25.md) compliant text record, to allow any entity interacting with the agent to verify it's identity. Without it, ENS verification cannot succeed. To verify an agent's ENS name:
+
+```python
+agent = sdk.loadAgent("11155111:1135")
+ens_configured = agent.verifyENSName()
+print("ENS matches agent metadata" if ens_configured else "ENS record is missing or misconfigured")
+```
+
+If the call returns `False`, the ENS record is missing or has mismatched registry/token data. 
+
 ### 5. Give and Retrieve Feedback
 
 ```python

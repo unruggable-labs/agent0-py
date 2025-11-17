@@ -553,12 +553,20 @@ class Agent:
         return self
 
     def verifyENSName(self, ens_name: Optional[str] = None) -> bool:
-        """Verify the agent's ENS name against ENSIP-25 registry records."""
+        """
+        Verifies that the ENS record configured for this agent actually points to
+        the on-chain registry encoded in the registration file.
+
+        Fetches the ENSIP-25 text record, decodes it, and compares it against the
+        locally stored agentId + registry. Returns false on any mismatch/missing data.
+        """
+        # Fast fail if the agent is missing ENS info or is not registered yet.
         ens_name = ens_name or self.ensEndpoint
         agent_id = self.registration_file.agentId
         if not ens_name or not agent_id:
             return False
 
+        # Agent IDs are stored as `<chainId>:<tokenId>`; parse and validate before RPC calls.
         try:
             chain_part, token_part = agent_id.split(":", 1)
             parsed_chain_id = int(chain_part, 10)
@@ -570,15 +578,18 @@ class Agent:
         if provider is None:
             return False
 
+        # Resolve the ENS text record published via ENSIP-25 for the agent's chain.
         record = load_agent_registry_record(provider, ens_name, parsed_chain_id)
         if not record:
             return False
 
+        # Obtain the registry address from the SDK so we compare against the exact contract.
         try:
             registry_address = self.sdk.identity_registry.address
         except Exception:
             return False
 
+        # Compare the ENS payload with expected chain, registry, and token identifiers.
         return record_matches_agent(
             record,
             {

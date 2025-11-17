@@ -1,5 +1,10 @@
 """
-Helpers for ENSIP-25 agent registry verification.
+Utilities used by `Agent.verifyENSName()` to read and validate ENSIP-25 records.
+
+We fetch the ENS text key `agent-registry:<7930 chain id>`,
+decode the value (`<EIP55 registry address><agentIdLength><agentIdHex>`), then
+compare the decoded registry + token id against what the SDK expects.
+ENSIP-25:
 """
 
 from __future__ import annotations
@@ -10,14 +15,16 @@ from typing import Any, Dict, Optional
 
 from eth_utils import to_checksum_address
 
+# Currently restricted to EVM (eip155) namespaces; future namespaces can be added here.
 CAIP_NAMESPACE_CODES = {"eip155": 0x0000}
+CAIP_VERSION = 1
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
 class AgentRegistryRecord:
-    """Decoded ENS agent registry record."""
+    """Decoded representation of the ENS registry record."""
 
     version: int
     chain_type: int
@@ -44,13 +51,15 @@ def _chain_reference_bytes(chain_id: int) -> bytes:
 
 
 def _encode_erc7930_chain_identifier(chain_id: int, namespace: str) -> str:
+    """Encode the ERC-7930 chain identifier (no address), as lowercase hex without leading 0x."""
     if namespace not in CAIP_NAMESPACE_CODES:
         raise ValueError(f"Unsupported CAIP namespace: {namespace}")
 
-    version_bytes = (1).to_bytes(2, "big")
+    version_bytes = CAIP_VERSION.to_bytes(2, "big")
     chain_type_bytes = CAIP_NAMESPACE_CODES[namespace].to_bytes(2, "big")
     chain_reference_bytes = _chain_reference_bytes(chain_id)
     chain_reference_length = len(chain_reference_bytes).to_bytes(1, "big")
+    # addrLen=0 per ERC-7930 because the chain identifier envelope does not include an address.
     address_length = (0).to_bytes(1, "big")
 
     payload = (
@@ -66,24 +75,32 @@ def _encode_erc7930_chain_identifier(chain_id: int, namespace: str) -> str:
 def build_agent_registry_record_key(
     chain_id: Any, namespace: str = "eip155"
 ) -> str:
-    """Build `agent-registry:<hex 7930 chain id>`."""
+    """
+    Build key: `agent-registry:<hex 7930 chain id>` (EVM only).
+    See ERC-7930 for chain id binary envelope (addrLen=0), hex-encoded.
+    """
     normalized_chain_id = _normalize_int(chain_id)
     envelope_hex = _encode_erc7930_chain_identifier(normalized_chain_id, namespace)
     return f"agent-registry:{envelope_hex}"
 
 
 def decode_agent_registry_value(value: str) -> AgentRegistryRecord:
-    """Decode `<EIP55 address><agentIdLength><agentIdHex>` payload."""
+    """
+    Decode value text: `<EIP55 address><agentIdLen><agentId>`.
+    Validates minimum length and hex sizes; normalizes address via EIP-55.
+    """
     if not isinstance(value, str):
         raise TypeError("Agent registry value must be a string")
 
     if not value.startswith("0x"):
         raise ValueError("Agent registry record must start with 0x")
 
-    address_section_length = 42
+    address_section_length = 42  # 0x + 40 hex chars for EVM addresses
+    # Require checksum address (42 chars) + at least one byte for agentId length.
     if len(value) < address_section_length + 2:
         raise ValueError("Agent registry record value too short")
 
+    # Split the payload into `<address><len><agentId>` per ENSIP-25.
     address_text = value[:address_section_length]
     length_hex = value[address_section_length : address_section_length + 2]
     try:
@@ -121,7 +138,15 @@ def load_agent_registry_record(
     chain_id: Any,
     namespace: str = "eip155",
 ) -> Optional[AgentRegistryRecord]:
-    """Fetch and decode the ENS text record for the given ENS name."""
+    """
+    Load and decode an ENS agent-registry record for a specific chain.
+
+    @param provider The SDK's provider.
+    @param ensName ENS name to inspect (e.g., `agent.eth`).
+    @param chainId Chain identifier encoded in the ENSIP key (eip155 only).
+    @param namespace CAIP namespace (defaults to `eip155`; other namespaces not yet supported).
+    """
+    # Build the ENS text key that points to the agent registry payload.
     record_key = build_agent_registry_record_key(chain_id, namespace)
 
     ens_api = getattr(provider, "ens", None)
@@ -145,6 +170,7 @@ def load_agent_registry_record(
         return None
 
     try:
+        # Decode the ENS record.
         decoded = decode_agent_registry_value(value)
     except Exception as exc:
         logger.debug(
@@ -162,7 +188,8 @@ def record_matches_agent(
     record: AgentRegistryRecord,
     expected: Dict[str, Any],
 ) -> bool:
-    """Compare a decoded record to expected agent information."""
+    """Compare a decoded record against expected agent data (EVM only)."""
+    # Currently limited to EVM-compatible records (eip155 namespace).
     if record.version != 1 or record.chain_type != CAIP_NAMESPACE_CODES["eip155"]:
         return False
 
@@ -172,6 +199,7 @@ def record_matches_agent(
     except Exception:
         return False
 
+    # The ENS record must be anchored to the same chain, registry contract, and token id.
     if record.chain_reference != expected_chain_id:
         return False
 
